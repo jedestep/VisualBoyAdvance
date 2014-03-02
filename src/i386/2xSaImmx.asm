@@ -74,10 +74,10 @@ colorA3   equ 4
 
 
 
-
-
-
-
+%imacro newsym 1
+GLOBAL %1
+%1:
+%endmacro
 
 
 %ifdef __DJGPP__

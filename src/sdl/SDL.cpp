@@ -23,6 +23,11 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <signal.h>
+#include <pthread.h>
+
 #include "../AutoBuild.h"
 
 #include "SDL.h"
@@ -1660,6 +1665,100 @@ void sdlCheckKeys()
     SDL_JoystickEventState(SDL_ENABLE);
 }
 
+void sdlNetKeyEvent(unsigned char* key) {
+    SDLKey keycode;
+
+    switch (key[0]) {
+        case 'a':
+            keycode = SDLK_a; break;
+        case 's':
+            keycode = SDLK_s; break;
+        case 'z':
+            keycode = SDLK_z; break;
+        case 'x':
+            keycode = SDLK_x; break;
+        case 'c':
+            keycode = SDLK_c; break;
+        case 'v':
+            keycode = SDLK_v; break;
+        case 'j':
+            keycode = SDLK_j; break;
+        case 'k':
+            keycode = SDLK_k; break;
+        case 't':
+            keycode = SDLK_t; break;
+        case 'f':
+            keycode = SDLK_f; break;
+        case 'g':
+            keycode = SDLK_f; break;
+        case 'h':
+            keycode = SDLK_h; break;
+    }
+
+    SDL_keysym keysym;
+    keysym.sym = keycode;
+    keysym.mod = KMOD_NONE;
+
+    SDL_KeyboardEvent keydown;
+    SDL_KeyboardEvent keyup;
+
+    keydown.type = SDL_KEYDOWN;
+    keydown.state = SDL_PRESSED;
+    keydown.keysym = keysym;
+
+    keyup.type = SDL_KEYUP;
+    keyup.state = SDL_RELEASED;
+    keyup.keysym = keysym;
+
+    SDL_Event keydown_event;
+    SDL_Event keyup_event;
+
+    keydown_event.type = SDL_KEYDOWN;
+    keydown_event.key = keydown;
+    keyup_event.type = SDL_KEYUP;
+    keyup_event.key = keyup;
+
+    int s1 = SDL_PushEvent(&keydown_event);
+    usleep(10000);
+    int s2 = SDL_PushEvent(&keyup_event);
+
+    return;
+}
+
+void* netPollEvents(void* ptr) {
+    struct sockaddr_in myaddr;
+    struct sockaddr_in remaddr;
+    socklen_t addrlen = sizeof(remaddr);
+
+    int recvlen;
+    int fd;
+    unsigned char buf[1024];
+
+    if ((fd = socket(AF_INET, SOCK_DGRAM, 0)) < 0) {
+        perror("Could not open socket");
+        return 0;
+    }
+
+    memset((char*)&myaddr, 0, sizeof(myaddr));
+    myaddr.sin_family = AF_INET;
+    myaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    myaddr.sin_port = htons(4242);
+
+    if (bind(fd, (struct sockaddr *)&myaddr, sizeof(myaddr)) < 0) {
+        perror("Could not bind socket to port 4242\n");
+        return 0;
+    }
+
+    for(;;) {
+        recvlen = recvfrom(fd, buf, 1024, 0, (struct sockaddr*)&remaddr, &addrlen);
+        if (recvlen > 0) {
+            buf[recvlen] = 0;
+            sdlNetKeyEvent(buf);
+        }
+    }
+}
+
+
 void sdlPollEvents()
 {
   SDL_Event event;
@@ -2565,6 +2664,9 @@ int main(int argc, char **argv)
   
   SDL_WM_SetCaption("VisualBoyAdvance", NULL);
 
+  pthread_t netEventThread;
+  int netReturn = pthread_create(&netEventThread, NULL, netPollEvents, (void*)NULL);
+
   while(emulating) {
     if(!paused && active) {
       if(debugger && emulator.emuHasDebugger)
@@ -2611,6 +2713,8 @@ int main(int argc, char **argv)
     free(delta);
     delta = NULL;
   }
+
+  pthread_join(netEventThread, NULL);
   
   SDL_Quit();
   return 0;
